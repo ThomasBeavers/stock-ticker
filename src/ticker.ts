@@ -2,24 +2,35 @@ import moment from 'moment';
 import fetch from 'node-fetch';
 import { TickerOptions, QuoteResponse, TickerSymbols } from './ticker-options';
 
+const growl = require('growl');
+
 interface TableRow {
 	[column: string]: string | number;
 }
 interface ColumnDefinition {
-	length: number;
 	color?: string;
 	compact?: boolean;
 	decimals?: number;
-	prefix?: string;
+	length: number;
 	postfix?: string;
+	prefix?: string;
 }
 
 export class Ticker {
+	private readonly alertStatus: { [symbol: string]: { [price: number]: number } } = {};
+
+	private static apiEndpoint = 'https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&corsDomain=finance.yahoo.com';
+	private static colors = {
+		Reset: "\x1b[0m",
+		Bright: "\x1b[1m",
+		Red: "\x1b[31m",
+		Green: "\x1b[32m"
+	}
+
 	private static defaults: TickerOptions = {
 		stocks: {},
 		frequency: 10
 	};
-	private static apiEndpoint = 'https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&corsDomain=finance.yahoo.com';
 	private static fields = [
 		'symbol',
 		'marketState',
@@ -35,17 +46,10 @@ export class Ticker {
 		'postMarketChangePercent'
 	];
 
-	private static colors = {
-		Reset: "\x1b[0m",
-		Bright: "\x1b[1m",
-		Red: "\x1b[31m",
-		Green: "\x1b[32m"
-	}
+	private previousTable: TableRow[] | null = null;
+	private running = false;
 
 	public readonly options: TickerOptions;
-
-	private running = false;
-	private previousTable: TableRow[] | null = null;
 
 	constructor(options: TickerOptions) {
 		this.options = { ...Ticker.defaults, ...options }
@@ -53,13 +57,48 @@ export class Ticker {
 
 	public async start(): Promise<void> {
 		if (typeof (this.options.frequency) === 'number' && this.options.frequency > 0) {
-
 			this.previousTable = await this.update(this.previousTable);
 
 			setInterval(async () => {
 				this.previousTable = await this.update(this.previousTable);
 			}, this.options.frequency * 1000);
 		}
+	}
+
+	private format(val: number, columnDef: ColumnDefinition, lengthCheck: boolean = false): string {
+		let formatted = '';
+		if (columnDef.compact) {
+			formatted = Intl.NumberFormat('en', { notation: 'compact', minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 } as any).format(val);
+		} else {
+			formatted = val.toLocaleString('en-US', { minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 });
+		}
+
+		formatted = (columnDef.prefix
+			+ formatted
+			+ columnDef.postfix)
+			.padStart(lengthCheck ? 0 : columnDef.length);
+
+		if (lengthCheck)
+			return formatted;
+
+		let color = '';
+
+		if (val < 0)
+			color = Ticker.colors.Red
+		else if (val > 0)
+			color = Ticker.colors.Green
+
+		return color + formatted + (color.length > 0 ? Ticker.colors.Reset : '');
+	}
+
+	private async pullStocks(stocks: TickerSymbols): Promise<QuoteResponse> {
+		const url = `${Ticker.apiEndpoint}&fields=${Ticker.fields.join(',')}&symbols=${Object.keys(stocks).join(',')}`;
+
+		// console.log(url);
+
+		return fetch(url)
+			.then((res) => res.json())
+			.then(json => json.quoteResponse as QuoteResponse);
 	}
 
 	private async update(previousTable: TableRow[] | null): Promise<TableRow[] | null> {
@@ -122,10 +161,32 @@ export class Ticker {
 					break;
 			}
 
+			const symbolConfig = this.options.stocks[quote.symbol];
+			if (symbolConfig.alerts) {
+				if (!this.alertStatus[quote.symbol]) {
+					this.alertStatus[quote.symbol] = {};
+				}
+
+				symbolConfig.alerts.forEach(alertPrice => {
+					let alertCheck = price - alertPrice;
+
+					if (alertCheck > 0)
+						alertCheck = 1;
+					else if (alertCheck < 0)
+						alertCheck = -1;
+
+					if (this.alertStatus[quote.symbol][alertPrice] != null && this.alertStatus[quote.symbol][alertPrice] !== alertCheck) {
+						growl(`${quote.symbol} has crossed ${alertPrice}: ${price}`);
+					}
+
+					this.alertStatus[quote.symbol][alertPrice] = alertCheck;
+				});
+			}
+
 			let oldValue = 0;
 			let newValue = 0;
 
-			this.options.stocks[quote.symbol].forEach(holding => {
+			symbolConfig.positions.forEach(holding => {
 				oldValue += holding.amount * holding.price;
 				newValue += holding.amount * price;
 			});
@@ -190,41 +251,5 @@ export class Ticker {
 		this.running = false;
 
 		return table;
-	}
-
-	private format(val: number, columnDef: ColumnDefinition, lengthCheck: boolean = false): string {
-		let formatted = '';
-		if (columnDef.compact) {
-			formatted = Intl.NumberFormat('en', { notation: 'compact', minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 } as any).format(val);
-		} else {
-			formatted = val.toLocaleString('en-US', { minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 });
-		}
-
-		formatted = (columnDef.prefix
-			+ formatted
-			+ columnDef.postfix)
-			.padStart(lengthCheck ? 0 : columnDef.length);
-
-		if (lengthCheck)
-			return formatted;
-
-		let color = '';
-
-		if (val < 0)
-			color = Ticker.colors.Red
-		else if (val > 0)
-			color = Ticker.colors.Green
-
-		return color + formatted + (color.length > 0 ? Ticker.colors.Reset : '');
-	}
-
-	private async pullStocks(stocks: TickerSymbols): Promise<QuoteResponse> {
-		const url = `${Ticker.apiEndpoint}&fields=${Ticker.fields.join(',')}&symbols=${Object.keys(stocks).join(',')}`;
-
-		// console.log(url);
-
-		return fetch(url)
-			.then((res) => res.json())
-			.then(json => json.quoteResponse as QuoteResponse);
 	}
 }
