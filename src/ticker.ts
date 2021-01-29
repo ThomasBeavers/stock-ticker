@@ -8,6 +8,7 @@ interface TableRow {
 interface ColumnDefinition {
 	length: number;
 	color?: string;
+	compact?: boolean;
 	decimals?: number;
 	prefix?: string;
 	postfix?: string;
@@ -77,7 +78,7 @@ export class Ticker {
 			'Price': { length: 0, color: Ticker.colors.Bright },
 			'Change': { length: 0, prefix: '$' },
 			'Change %': { length: 0, postfix: '%' },
-			'Volume': { length: 0, color: Ticker.colors.Bright, decimals: 0 },
+			'Volume': { length: 0, color: Ticker.colors.Bright, compact: true, decimals: 0 },
 			'Total Change': { length: 0, prefix: '$' },
 			'Total %': { length: 0, postfix: '%' },
 			'Current Value': { length: 0, color: Ticker.colors.Bright, prefix: '$' },
@@ -192,8 +193,15 @@ export class Ticker {
 	}
 
 	private format(val: number, columnDef: ColumnDefinition, lengthCheck: boolean = false): string {
-		const formatted = (columnDef.prefix
-			+ val.toLocaleString('en-US', { minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 })
+		let formatted = '';
+		if (columnDef.compact) {
+			formatted = Intl.NumberFormat('en', { notation: 'compact' } as any).format(val);
+		} else {
+			formatted = val.toLocaleString('en-US', { minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 });
+		}
+
+		formatted = (columnDef.prefix
+			+ formatted
 			+ columnDef.postfix)
 			.padStart(lengthCheck ? 0 : columnDef.length);
 
