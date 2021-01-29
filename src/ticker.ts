@@ -17,7 +17,7 @@ interface ColumnDefinition {
 export class Ticker {
 	private static defaults: TickerOptions = {
 		stocks: {},
-		frequency: 20
+		frequency: 10
 	};
 	private static apiEndpoint = 'https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&corsDomain=finance.yahoo.com';
 	private static fields = [
