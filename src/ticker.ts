@@ -8,6 +8,7 @@ interface TableRow {
 interface ColumnDefinition {
 	length: number;
 	color?: string;
+	decimals?: number;
 	prefix?: string;
 	postfix?: string;
 }
@@ -15,7 +16,7 @@ interface ColumnDefinition {
 export class Ticker {
 	private static defaults: TickerOptions = {
 		stocks: {},
-		frequency: 5
+		frequency: 20
 	};
 	private static apiEndpoint = 'https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&corsDomain=finance.yahoo.com';
 	private static fields = [
@@ -24,6 +25,7 @@ export class Ticker {
 		'regularMarketPrice',
 		'regularMarketChange',
 		'regularMarketChangePercent',
+		'regularMarketVolume',
 		'preMarketPrice',
 		'preMarketChange',
 		'preMarketChangePercent',
@@ -75,6 +77,7 @@ export class Ticker {
 			'Price': { length: 0, color: Ticker.colors.Bright },
 			'Change': { length: 0, prefix: '$' },
 			'Change %': { length: 0, postfix: '%' },
+			'Volume': { length: 0, color: Ticker.colors.Bright, decimals: 0 },
 			'Total Change': { length: 0, prefix: '$' },
 			'Total %': { length: 0, postfix: '%' },
 			'Current Value': { length: 0, color: Ticker.colors.Bright, prefix: '$' },
@@ -99,6 +102,7 @@ export class Ticker {
 			let price = quote.regularMarketPrice;
 			let change = quote.regularMarketChange;
 			let changePercent = quote.regularMarketChangePercent;
+			let volume = quote.regularMarketVolume;
 
 			switch (quote.marketState) {
 				case 'PRE':
@@ -132,6 +136,7 @@ export class Ticker {
 				'Price': this.format(price, columns['Price'], true),
 				'Change': change,
 				'Change %': changePercent,
+				'Volume': this.format(volume, columns['Volume'], true),
 				'Total Change': totalChange,
 				'Total %': ((totalChange / oldValue) * 100),
 				'Current Value': this.format(newValue, columns['Price'], true),
@@ -188,7 +193,7 @@ export class Ticker {
 
 	private format(val: number, columnDef: ColumnDefinition, lengthCheck: boolean = false): string {
 		const formatted = (columnDef.prefix
-			+ val.toLocaleString('en-US', { minimumFractionDigits: 2 })
+			+ val.toLocaleString('en-US', { minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 })
 			+ columnDef.postfix)
 			.padStart(lengthCheck ? 0 : columnDef.length);
 

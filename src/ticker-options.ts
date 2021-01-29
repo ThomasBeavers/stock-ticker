@@ -48,6 +48,7 @@ export interface Quote {
 	regularMarketTime: number,
 	regularMarketPrice: number,
 	regularMarketPreviousClose: number,
+	regularMarketVolume: number,
 	fullExchangeName: string
 	symbol: string
 }
