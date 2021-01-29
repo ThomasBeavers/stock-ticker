@@ -1,8 +1,15 @@
+import moment from 'moment';
 import fetch from 'node-fetch';
 import { TickerOptions, QuoteResponse, TickerSymbols } from './ticker-options';
 
 interface TableRow {
 	[column: string]: string | number;
+}
+interface ColumnDefinition {
+	length: number;
+	color?: string;
+	prefix?: string;
+	postfix?: string;
 }
 
 export class Ticker {
@@ -63,19 +70,27 @@ export class Ticker {
 		if (results.error)
 			throw new Error(results.error);
 
-		const columns: { [column: string]: { length: number, color?: string } } = {
+		const columns: { [column: string]: ColumnDefinition } = {
 			'Symbol': { length: 0, color: Ticker.colors.Bright },
 			'Price': { length: 0, color: Ticker.colors.Bright },
-			'Change': { length: 0 },
-			'Change %': { length: 0 },
-			'Total Change': { length: 0 },
-			'Total %': { length: 0 },
-			'Current Value': { length: 0, color: Ticker.colors.Bright },
+			'Change': { length: 0, prefix: '$' },
+			'Change %': { length: 0, postfix: '%' },
+			'Total Change': { length: 0, prefix: '$' },
+			'Total %': { length: 0, postfix: '%' },
+			'Current Value': { length: 0, color: Ticker.colors.Bright, prefix: '$' },
 			' ': { length: 0 }
 		}
 
 		Object.keys(columns).forEach(column => {
 			columns[column].length = column.length;
+
+			if (!columns[column].prefix) {
+				columns[column].prefix = '';
+			}
+
+			if (!columns[column].postfix) {
+				columns[column].postfix = '';
+			}
 		});
 
 		const table = results.result.map((quote, index) => {
@@ -114,12 +129,12 @@ export class Ticker {
 
 			const row: TableRow = {
 				'Symbol': quote.symbol,
-				'Price': price.toFixed(2),
+				'Price': this.format(price, columns['Price'], true),
 				'Change': change,
 				'Change %': changePercent,
 				'Total Change': totalChange,
 				'Total %': ((totalChange / oldValue) * 100),
-				'Current Value': newValue.toFixed(2),
+				'Current Value': this.format(newValue, columns['Price'], true),
 				' ': nonRegularMarket
 			};
 
@@ -131,10 +146,11 @@ export class Ticker {
 					row[column] = value;
 				}
 
-				if (typeof (value) === 'string')
-					columns[column].length = Math.max(columns[column].length, value.length);
-				else
-					columns[column].length = Math.max(columns[column].length, value.toFixed(2).length);
+				const length = (typeof (value) === 'string')
+					? value.length
+					: this.format(value, columns[column], true).length;
+
+				columns[column].length = Math.max(columns[column].length, length);
 			});
 
 			return row;
@@ -142,7 +158,9 @@ export class Ticker {
 
 		console.clear();
 
-		console.log(Ticker.colors.Bright + Object.keys(columns).map(column => column.padEnd(columns[column].length)).join('  ') + Ticker.colors.Reset);
+		console.log(Ticker.colors.Bright + Object.keys(columns)
+			.map(column => column.padStart(columns[column].length))
+			.join('  ') + Ticker.colors.Reset);
 
 		table.forEach(row => {
 			console.log(Object.keys(columns).map(column => {
@@ -157,18 +175,26 @@ export class Ticker {
 					return value;
 				}
 
-				return this.colored(value, columns[column].length);
+				return this.format(value, columns[column]);
 			}).join('  '));
 		});
 
 		console.log();
-		console.log(new Date());
+		console.log(moment().format('L LTS'));
 		this.running = false;
 
 		return table;
 	}
 
-	private colored(val: number, padding: number): string {
+	private format(val: number, columnDef: ColumnDefinition, lengthCheck: boolean = false): string {
+		const formatted = (columnDef.prefix
+			+ val.toLocaleString('en-US', { minimumFractionDigits: 2 })
+			+ columnDef.postfix)
+			.padStart(lengthCheck ? 0 : columnDef.length);
+
+		if (lengthCheck)
+			return formatted;
+
 		let color = '';
 
 		if (val < 0)
@@ -176,7 +202,7 @@ export class Ticker {
 		else if (val > 0)
 			color = Ticker.colors.Green
 
-		return color + val.toFixed(2).padStart(padding) + (color.length > 0 ? Ticker.colors.Reset : '');
+		return color + formatted + (color.length > 0 ? Ticker.colors.Reset : '');
 	}
 
 	private async pullStocks(stocks: TickerSymbols): Promise<QuoteResponse> {

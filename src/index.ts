@@ -22,6 +22,22 @@ const options: TickerOptions = {
 				amount: 1462,
 				price: 15.57
 			}
+		],
+		'PLTR': [
+			{
+				amount: 17,
+				price: 27.72
+			},
+			{
+				amount: 2,
+				price: 28.55
+			}
+		],
+		'ETH-USD': [
+			{
+				amount: 5,
+				price: 1135.64
+			}
 		]
 	}
 };
