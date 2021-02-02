@@ -70,7 +70,7 @@ export class Ticker {
 		if (columnDef.compact) {
 			formatted = Intl.NumberFormat('en', { notation: 'compact', minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 } as any).format(val);
 		} else {
-			formatted = val.toLocaleString('en-US', { minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 });
+			formatted = (val || '').toLocaleString('en-US', { minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 });
 		}
 
 		formatted = (columnDef.prefix
@@ -176,7 +176,12 @@ export class Ticker {
 						alertCheck = -1;
 
 					if (this.alertStatus[quote.symbol][alertPrice] != null && this.alertStatus[quote.symbol][alertPrice] !== alertCheck) {
-						growl(`${quote.symbol} has crossed ${alertPrice}: ${price}`);
+						if (alertCheck > 0)
+							growl(`${quote.symbol} has gone above ${alertPrice}: ${price}`);
+						else if (alertCheck < 0)
+							growl(`${quote.symbol} has gone below ${alertPrice}: ${price}`);
+						else
+							growl(`${quote.symbol} has reached ${alertPrice}: ${price}`);
 					}
 
 					this.alertStatus[quote.symbol][alertPrice] = alertCheck;
