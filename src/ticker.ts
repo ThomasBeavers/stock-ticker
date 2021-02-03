@@ -65,12 +65,25 @@ export class Ticker {
 		}
 	}
 
-	private format(val: number, columnDef: ColumnDefinition, lengthCheck: boolean = false): string {
+	private format(val: number, columnDef: ColumnDefinition, lengthCheck: boolean = false, previous: number | null = null): string {
 		let formatted = '';
+		let prevFormatted = null;
+
+		let prevColor = '';
+
+		if (previous) {
+			if (previous < val)
+				prevColor = Ticker.colors.Green;
+			else if (previous > val)
+				prevColor = Ticker.colors.Red;
+		}
+
 		if (columnDef.compact) {
 			formatted = Intl.NumberFormat('en', { notation: 'compact', minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 } as any).format(val);
 		} else {
-			formatted = (val || '').toLocaleString('en-US', { minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 });
+			formatted = this.formatFull(val, columnDef);
+			if (previous)
+				prevFormatted = this.formatFull(previous, columnDef);
 		}
 
 		formatted = (columnDef.prefix
@@ -78,17 +91,47 @@ export class Ticker {
 			+ columnDef.postfix)
 			.padStart(lengthCheck ? 0 : columnDef.length);
 
+		if (prevFormatted) {
+			prevFormatted = (columnDef.prefix
+				+ prevFormatted
+				+ columnDef.postfix)
+				.padStart(lengthCheck ? 0 : columnDef.length);
+
+			if (prevFormatted.length !== formatted.length)
+				formatted = prevColor + formatted;
+			else {
+				let index = -1;
+				for (var i = 0; i < formatted.length; i++) {
+					if (formatted[i] !== prevFormatted[i]) {
+						index = i;
+						break;
+					}
+				}
+
+				if (index === -1)
+					formatted = prevColor + formatted;
+				else
+					formatted = formatted.substring(0, index) + prevColor + formatted.substring(index);
+			}
+		}
+
 		if (lengthCheck)
 			return formatted;
 
 		let color = '';
 
-		if (val < 0)
-			color = Ticker.colors.Red
+		if (columnDef.color)
+			color = columnDef.color;
+		else if (val < 0)
+			color = Ticker.colors.Red;
 		else if (val > 0)
-			color = Ticker.colors.Green
+			color = Ticker.colors.Green;
 
 		return color + formatted + (color.length > 0 ? Ticker.colors.Reset : '');
+	}
+
+	private formatFull(val: number, columnDef: ColumnDefinition) {
+		return (val || '').toLocaleString('en-US', { minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 });
 	}
 
 	private async pullStocks(stocks: TickerSymbols): Promise<QuoteResponse> {
@@ -210,7 +253,7 @@ export class Ticker {
 
 				const row: TableRow = {
 					'Symbol': quote.symbol,
-					'Price': this.format(price, columns['Price'], true),
+					'Price': price,
 					'Change': change,
 					'Change %': changePercent,
 					'Volume': this.format(volume, columns['Volume'], true),
@@ -244,10 +287,11 @@ export class Ticker {
 				.map(column => column.padStart(columns[column].length))
 				.join('  ') + Ticker.colors.Reset);
 
-			table.forEach(row => {
+			table.forEach((row, index) => {
 				console.log(Object.keys(columns).map(column => {
 					const color = columns[column].color;
 					let value = row[column];
+
 					if (typeof (value) === 'string') {
 						value = value.padStart(columns[column].length);
 
@@ -255,6 +299,14 @@ export class Ticker {
 							return color + value + Ticker.colors.Reset;
 
 						return value;
+					}
+
+					if (column === 'Price') {
+						if (previousTable != null && previousTable.length > index) {
+							const previousPrice = previousTable[index]['Price'];
+							if (typeof (previousPrice) === 'number')
+								return this.format(value, columns[column], false, previousPrice);
+						}
 					}
 
 					return this.format(value, columns[column]);
