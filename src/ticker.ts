@@ -17,8 +17,6 @@ interface ColumnDefinition {
 }
 
 export class Ticker {
-	private readonly alertStatus: { [symbol: string]: { [price: number]: number } } = {};
-
 	private static apiEndpoint = 'https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&corsDomain=finance.yahoo.com';
 	private static colors = {
 		Reset: "\x1b[0m",
@@ -45,6 +43,8 @@ export class Ticker {
 		'postMarketChange',
 		'postMarketChangePercent'
 	];
+
+	private readonly alertStatus: { [symbol: string]: { [price: number]: number } } = {};
 
 	private previousTable: TableRow[] | null = null;
 	private running = false;
@@ -105,156 +105,169 @@ export class Ticker {
 		if (this.running)
 			return null;
 
-		this.running = true;
+		const now = new Date();
+		const hour = now.getHours();
+		if (hour < 4 || hour >= 20) // Only active from 4am to 8pm EST
+			return null;
 
-		const results = await this.pullStocks(this.options.stocks);
+		const day = now.getDay();
+		if (day === 0 || day === 6) // Only active Mon-Fri
+			return null;
 
-		if (results.error)
-			throw new Error(results.error);
+		try {
+			this.running = true;
 
-		const columns: { [column: string]: ColumnDefinition } = {
-			'Symbol': { length: 0, color: Ticker.colors.Bright },
-			'Price': { length: 0, color: Ticker.colors.Bright },
-			'Change': { length: 0, prefix: '$' },
-			'Change %': { length: 0, postfix: '%' },
-			'Volume': { length: 0, color: Ticker.colors.Bright, compact: true },
-			'Total Change': { length: 0, prefix: '$' },
-			'Total %': { length: 0, postfix: '%' },
-			'Current Value': { length: 0, color: Ticker.colors.Bright, prefix: '$' },
-			' ': { length: 0 }
-		}
+			const results = await this.pullStocks(this.options.stocks);
 
-		Object.keys(columns).forEach(column => {
-			columns[column].length = column.length;
+			if (results.error)
+				throw new Error(results.error);
 
-			if (!columns[column].prefix) {
-				columns[column].prefix = '';
+			const columns: { [column: string]: ColumnDefinition } = {
+				'Symbol': { length: 0, color: Ticker.colors.Bright },
+				'Price': { length: 0, color: Ticker.colors.Bright },
+				'Change': { length: 0, prefix: '$' },
+				'Change %': { length: 0, postfix: '%' },
+				'Volume': { length: 0, color: Ticker.colors.Bright, compact: true },
+				'Total Change': { length: 0, prefix: '$' },
+				'Total %': { length: 0, postfix: '%' },
+				'Current Value': { length: 0, color: Ticker.colors.Bright, prefix: '$' },
+				' ': { length: 0 }
 			}
 
-			if (!columns[column].postfix) {
-				columns[column].postfix = '';
-			}
-		});
+			Object.keys(columns).forEach(column => {
+				columns[column].length = column.length;
 
-		const table = results.result.map((quote, index) => {
-			let nonRegularMarket = '';
-
-			let price = quote.regularMarketPrice;
-			let change = quote.regularMarketChange;
-			let changePercent = quote.regularMarketChangePercent;
-			let volume = quote.regularMarketVolume;
-
-			switch (quote.marketState) {
-				case 'PRE':
-					nonRegularMarket = '<'
-					price = quote.preMarketPrice;
-					change = quote.preMarketChange;
-					changePercent = quote.preMarketChangePercent;
-					break;
-				case 'POST':
-					nonRegularMarket = '>'
-					price = quote.postMarketPrice;
-					change = quote.postMarketChange;
-					changePercent = quote.postMarketChangePercent;
-					break;
-				default:
-					break;
-			}
-
-			const symbolConfig = this.options.stocks[quote.symbol];
-			if (symbolConfig.alerts) {
-				if (!this.alertStatus[quote.symbol]) {
-					this.alertStatus[quote.symbol] = {};
+				if (!columns[column].prefix) {
+					columns[column].prefix = '';
 				}
 
-				symbolConfig.alerts.forEach(alertPrice => {
-					let alertCheck = price - alertPrice;
+				if (!columns[column].postfix) {
+					columns[column].postfix = '';
+				}
+			});
 
-					if (alertCheck > 0)
-						alertCheck = 1;
-					else if (alertCheck < 0)
-						alertCheck = -1;
+			const table = results.result.map((quote, index) => {
+				let nonRegularMarket = '';
 
-					if (this.alertStatus[quote.symbol][alertPrice] != null && this.alertStatus[quote.symbol][alertPrice] !== alertCheck) {
-						if (alertCheck > 0)
-							growl(`${quote.symbol} has gone above ${alertPrice}: ${price}`);
-						else if (alertCheck < 0)
-							growl(`${quote.symbol} has gone below ${alertPrice}: ${price}`);
-						else
-							growl(`${quote.symbol} has reached ${alertPrice}: ${price}`);
+				let price = quote.regularMarketPrice;
+				let change = quote.regularMarketChange;
+				let changePercent = quote.regularMarketChangePercent;
+				let volume = quote.regularMarketVolume;
+
+				switch (quote.marketState) {
+					case 'PRE':
+						nonRegularMarket = '<'
+						price = quote.preMarketPrice;
+						change = quote.preMarketChange;
+						changePercent = quote.preMarketChangePercent;
+						break;
+					case 'POST':
+						nonRegularMarket = '>'
+						price = quote.postMarketPrice;
+						change = quote.postMarketChange;
+						changePercent = quote.postMarketChangePercent;
+						break;
+					default:
+						break;
+				}
+
+				const symbolConfig = this.options.stocks[quote.symbol];
+				if (symbolConfig.alerts) {
+					if (!this.alertStatus[quote.symbol]) {
+						this.alertStatus[quote.symbol] = {};
 					}
 
-					this.alertStatus[quote.symbol][alertPrice] = alertCheck;
+					symbolConfig.alerts.forEach(alertPrice => {
+						let alertCheck = price - alertPrice;
+
+						if (alertCheck > 0)
+							alertCheck = 1;
+						else if (alertCheck < 0)
+							alertCheck = -1;
+
+						if (this.alertStatus[quote.symbol][alertPrice] != null && this.alertStatus[quote.symbol][alertPrice] !== alertCheck) {
+							if (alertCheck > 0)
+								growl(`${quote.symbol} has gone above ${alertPrice}: ${price}`);
+							else if (alertCheck < 0)
+								growl(`${quote.symbol} has gone below ${alertPrice}: ${price}`);
+							else
+								growl(`${quote.symbol} has reached ${alertPrice}: ${price}`);
+						}
+
+						this.alertStatus[quote.symbol][alertPrice] = alertCheck;
+					});
+				}
+
+				let oldValue = 0;
+				let newValue = 0;
+
+				symbolConfig.positions.forEach(holding => {
+					oldValue += holding.amount * holding.price;
+					newValue += holding.amount * price;
 				});
-			}
 
-			let oldValue = 0;
-			let newValue = 0;
+				const totalChange = newValue - oldValue;
 
-			symbolConfig.positions.forEach(holding => {
-				oldValue += holding.amount * holding.price;
-				newValue += holding.amount * price;
+				const row: TableRow = {
+					'Symbol': quote.symbol,
+					'Price': this.format(price, columns['Price'], true),
+					'Change': change,
+					'Change %': changePercent,
+					'Volume': this.format(volume, columns['Volume'], true),
+					'Total Change': totalChange,
+					'Total %': ((totalChange / oldValue) * 100),
+					'Current Value': this.format(newValue, columns['Price'], true),
+					' ': nonRegularMarket
+				};
+
+				Object.keys(row).forEach(column => {
+					let value = row[column];
+
+					if (value == null && previousTable != null && previousTable.length > index) {
+						value = previousTable[index][column];
+						row[column] = value;
+					}
+
+					const length = (typeof (value) === 'string')
+						? value.length
+						: this.format(value, columns[column], true).length;
+
+					columns[column].length = Math.max(columns[column].length, length);
+				});
+
+				return row;
 			});
 
-			const totalChange = newValue - oldValue;
+			console.clear();
 
-			const row: TableRow = {
-				'Symbol': quote.symbol,
-				'Price': this.format(price, columns['Price'], true),
-				'Change': change,
-				'Change %': changePercent,
-				'Volume': this.format(volume, columns['Volume'], true),
-				'Total Change': totalChange,
-				'Total %': ((totalChange / oldValue) * 100),
-				'Current Value': this.format(newValue, columns['Price'], true),
-				' ': nonRegularMarket
-			};
+			console.log(Ticker.colors.Bright + Object.keys(columns)
+				.map(column => column.padStart(columns[column].length))
+				.join('  ') + Ticker.colors.Reset);
 
-			Object.keys(row).forEach(column => {
-				let value = row[column];
+			table.forEach(row => {
+				console.log(Object.keys(columns).map(column => {
+					const color = columns[column].color;
+					let value = row[column];
+					if (typeof (value) === 'string') {
+						value = value.padStart(columns[column].length);
 
-				if (value == null && previousTable != null && previousTable.length > index) {
-					value = previousTable[index][column];
-					row[column] = value;
-				}
+						if (color)
+							return color + value + Ticker.colors.Reset;
 
-				const length = (typeof (value) === 'string')
-					? value.length
-					: this.format(value, columns[column], true).length;
+						return value;
+					}
 
-				columns[column].length = Math.max(columns[column].length, length);
+					return this.format(value, columns[column]);
+				}).join('  '));
 			});
 
-			return row;
-		});
+			console.log();
+			console.log(moment().format('L LTS'));
 
-		console.clear();
-
-		console.log(Ticker.colors.Bright + Object.keys(columns)
-			.map(column => column.padStart(columns[column].length))
-			.join('  ') + Ticker.colors.Reset);
-
-		table.forEach(row => {
-			console.log(Object.keys(columns).map(column => {
-				const color = columns[column].color;
-				let value = row[column];
-				if (typeof (value) === 'string') {
-					value = value.padStart(columns[column].length);
-
-					if (color)
-						return color + value + Ticker.colors.Reset;
-
-					return value;
-				}
-
-				return this.format(value, columns[column]);
-			}).join('  '));
-		});
-
-		console.log();
-		console.log(moment().format('L LTS'));
-		this.running = false;
-
-		return table;
+			return table;
+		}
+		finally {
+			this.running = false;
+		}
 	}
 }
