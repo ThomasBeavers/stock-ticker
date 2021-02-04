@@ -91,20 +91,22 @@ export class Ticker {
 			+ columnDef.postfix)
 			.padStart(lengthCheck ? 0 : columnDef.length);
 
+		if (lengthCheck)
+			return formatted;
+
 		if (prevFormatted) {
 			prevFormatted = (columnDef.prefix
 				+ prevFormatted
 				+ columnDef.postfix)
 				.padStart(lengthCheck ? 0 : columnDef.length);
 
-			if (prevFormatted.length !== formatted.length)
+			if (prevFormatted.length !== formatted.length) {
 				formatted = prevColor + formatted;
-			else {
+			} else {
 				let index = -1;
-				for (var i = 0; i < formatted.length; i++) {
+				for (var i = formatted.length - 1; i > 0; i--) {
 					if (formatted[i] !== prevFormatted[i]) {
 						index = i;
-						break;
 					}
 				}
 
@@ -114,9 +116,6 @@ export class Ticker {
 					formatted = formatted.substring(0, index) + prevColor + formatted.substring(index);
 			}
 		}
-
-		if (lengthCheck)
-			return formatted;
 
 		let color = '';
 
@@ -131,7 +130,8 @@ export class Ticker {
 	}
 
 	private formatFull(val: number, columnDef: ColumnDefinition) {
-		return (val || '').toLocaleString('en-US', { minimumFractionDigits: columnDef.decimals ? columnDef.decimals : 2 });
+		const fractionDigits = columnDef.decimals ? columnDef.decimals : 2;
+		return (val || 0).toLocaleString('en-US', { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits });
 	}
 
 	private async pullStocks(stocks: TickerSymbols): Promise<QuoteResponse> {
