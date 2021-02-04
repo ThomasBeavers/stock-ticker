@@ -110,9 +110,7 @@ export class Ticker {
 					}
 				}
 
-				if (index === -1)
-					formatted = prevColor + formatted;
-				else
+				if (index >= 0)
 					formatted = formatted.substring(0, index) + prevColor + formatted.substring(index);
 			}
 		}
