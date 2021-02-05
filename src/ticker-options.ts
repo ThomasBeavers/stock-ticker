@@ -9,7 +9,7 @@ export interface TickerSymbols {
 
 export interface TickerSymbol {
 	alerts?: number[];
-	positions: Position[];
+	positions?: Position[];
 }
 export interface Position {
 	amount: number;

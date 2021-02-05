@@ -1,0 +1,35 @@
+{
+	"AAPL": {
+		"alerts": [
+			150
+		],
+		"positions": [
+			{
+				"amount": 100,
+				"price": 100
+			}
+		]
+	},
+	"TSLA": {},
+	"MSFT": {
+		"positions": [
+			{
+				"amount": 100,
+				"price": 200
+			},
+			{
+				"amount": 200,
+				"price": 220
+			}
+		]
+	},
+	"GOOG": {},
+	"BTC-USD": {
+		"positions": [
+			{
+				"amount": 5,
+				"price": 30000
+			}
+		]
+	}
+}

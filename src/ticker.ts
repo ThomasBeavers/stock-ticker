@@ -135,8 +135,6 @@ export class Ticker {
 	private async pullStocks(stocks: TickerSymbols): Promise<QuoteResponse> {
 		const url = `${Ticker.apiEndpoint}&fields=${Ticker.fields.join(',')}&symbols=${Object.keys(stocks).join(',')}`;
 
-		// console.log(url);
-
 		return fetch(url)
 			.then((res) => res.json())
 			.then(json => json.quoteResponse as QuoteResponse);
@@ -242,10 +240,12 @@ export class Ticker {
 				let oldValue = 0;
 				let newValue = 0;
 
-				symbolConfig.positions.forEach(holding => {
-					oldValue += holding.amount * holding.price;
-					newValue += holding.amount * price;
-				});
+				if (symbolConfig.positions) {
+					symbolConfig.positions.forEach(holding => {
+						oldValue += holding.amount * holding.price;
+						newValue += holding.amount * price;
+					});
+				}
 
 				const totalChange = newValue - oldValue;
 
