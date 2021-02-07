@@ -1,6 +1,7 @@
 import moment from 'moment';
 import fetch from 'node-fetch';
-import { TickerOptions, QuoteResponse, TickerSymbols } from './ticker-options';
+
+import { QuoteResponse, TickerOptions, TickerSymbols } from './ticker-options';
 
 const growl = require('growl');
 
@@ -17,6 +18,8 @@ interface ColumnDefinition {
 }
 
 export class Ticker {
+	private readonly alertStatus: { [symbol: string]: { [price: number]: number } } = {};
+
 	private static apiEndpoint = 'https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&corsDomain=finance.yahoo.com';
 	private static colors = {
 		Reset: "\x1b[0m",
@@ -44,10 +47,10 @@ export class Ticker {
 		'postMarketChangePercent'
 	];
 
-	private readonly alertStatus: { [symbol: string]: { [price: number]: number } } = {};
-
+	private afterHoursLogged: boolean = false;
 	private previousTable: TableRow[] | null = null;
 	private running = false;
+	private weekendLogged: boolean = false;
 
 	public readonly options: TickerOptions;
 
@@ -146,12 +149,24 @@ export class Ticker {
 
 		const now = new Date();
 		const hour = now.getHours();
-		if (hour < 4 || hour >= 20) // Only active from 4am to 8pm EST
+		if (hour < 4 || hour >= 20) { // Only active from 4am to 8pm EST
+			if (!this.afterHoursLogged) {
+				console.log('Outside of market hours');
+				this.afterHoursLogged = true;
+			}
 			return null;
+		}
+		this.afterHoursLogged = false;
 
 		const day = now.getDay();
-		if (day === 0 || day === 6) // Only active Mon-Fri
+		if (day === 0 || day === 6) { // Only active Mon-Fri
+			if (!this.weekendLogged) {
+				console.log('Market closed on weekends.');
+				this.weekendLogged = true;
+			}
 			return null;
+		}
+		this.weekendLogged = false;
 
 		try {
 			this.running = true;
