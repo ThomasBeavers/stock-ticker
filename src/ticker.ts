@@ -18,8 +18,6 @@ interface ColumnDefinition {
 }
 
 export class Ticker {
-	private readonly alertStatus: { [symbol: string]: { [price: number]: number } } = {};
-
 	private static apiEndpoint = 'https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&corsDomain=finance.yahoo.com';
 	private static colors = {
 		Reset: "\x1b[0m",
@@ -30,7 +28,8 @@ export class Ticker {
 
 	private static defaults: TickerOptions = {
 		stocks: {},
-		frequency: 10
+		frequency: 10,
+		limitHours: false
 	};
 	private static fields = [
 		'symbol',
@@ -46,6 +45,8 @@ export class Ticker {
 		'postMarketChange',
 		'postMarketChangePercent'
 	];
+
+	private readonly alertStatus: { [symbol: string]: { [price: number]: number } } = {};
 
 	private afterHoursLogged: boolean = false;
 	private previousTable: TableRow[] | null = null;
@@ -147,34 +148,39 @@ export class Ticker {
 		if (this.running)
 			return null;
 
-		const now = new Date();
-		const hour = now.getHours();
-		if (hour < 4 || hour >= 20) { // Only active from 4am to 8pm EST
-			if (!this.afterHoursLogged) {
-				console.log('Outside of market hours');
-				this.afterHoursLogged = true;
+		if (this.options.limitHours) {
+			const now = new Date();
+			const hour = now.getHours();
+			if (hour < 4 || hour >= 20) { // Only active from 4am to 8pm EST
+				if (!this.afterHoursLogged) {
+					console.log('Outside of market hours');
+					this.afterHoursLogged = true;
+				}
+				return null;
 			}
-			return null;
-		}
-		this.afterHoursLogged = false;
+			this.afterHoursLogged = false;
 
-		const day = now.getDay();
-		if (day === 0 || day === 6) { // Only active Mon-Fri
-			if (!this.weekendLogged) {
-				console.log('Market closed on weekends.');
-				this.weekendLogged = true;
+			const day = now.getDay();
+			if (day === 0 || day === 6) { // Only active Mon-Fri
+				if (!this.weekendLogged) {
+					console.log('Market closed on weekends.');
+					this.weekendLogged = true;
+				}
+				return null;
 			}
-			return null;
+			this.weekendLogged = false;
 		}
-		this.weekendLogged = false;
 
 		try {
 			this.running = true;
 
 			const results = await this.pullStocks(this.options.stocks);
 
-			if (results.error)
-				throw new Error(results.error);
+			if (results.error) {
+				console.error(results.error);
+
+				return previousTable;
+			}
 
 			const columns: { [column: string]: ColumnDefinition } = {
 				'Symbol': { length: 0, color: Ticker.colors.Bright },

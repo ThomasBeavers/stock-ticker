@@ -1,5 +1,6 @@
 export interface TickerOptions {
 	frequency?: number;
+	limitHours?: boolean;
 	stocks: TickerSymbols;
 }
 
