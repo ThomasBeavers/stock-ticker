@@ -141,7 +141,13 @@ export class Ticker {
 
 		return fetch(url)
 			.then((res) => res.json())
-			.then(json => json.quoteResponse as QuoteResponse);
+			.then(json => json.quoteResponse as QuoteResponse)
+			.catch(error => {
+				return {
+					error,
+					result: []
+				};
+			});
 	}
 
 	private async update(previousTable: TableRow[] | null): Promise<TableRow[] | null> {
