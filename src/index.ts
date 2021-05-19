@@ -1,9 +1,8 @@
 import { Ticker } from './ticker';
-import { TickerOptions, TickerSymbols } from './ticker-options';
-import config from './config.json';
+import { TickerStartOptions, TickerSymbols } from './ticker-options';
 
-const options: TickerOptions = {
-	stocks: config
+const options: TickerStartOptions = {
+	configPath: './config.json'
 };
 
 new Ticker(options)

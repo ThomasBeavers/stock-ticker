@@ -1,7 +1,8 @@
+import { FSWatcher, promises as fsPromises, watch } from 'fs';
 import moment from 'moment';
 import fetch from 'node-fetch';
 
-import { QuoteResponse, TickerOptions, TickerSymbols } from './ticker-options';
+import { QuoteResponse, TickerOptions, TickerStartOptions, TickerSymbols } from './ticker-options';
 
 const growl = require('growl');
 
@@ -26,8 +27,8 @@ export class Ticker {
 		Green: "\x1b[32m"
 	}
 
-	private static defaults: TickerOptions = {
-		stocks: {},
+	private static defaults: TickerStartOptions = {
+		configPath: '',
 		frequency: 10,
 		limitHours: false
 	};
@@ -51,22 +52,30 @@ export class Ticker {
 	private afterHoursLogged: boolean = false;
 	private previousTable: TableRow[] | null = null;
 	private running = false;
+	private watcher?: FSWatcher;
 	private weekendLogged: boolean = false;
 
 	public readonly options: TickerOptions;
 
-	constructor(options: TickerOptions) {
-		this.options = { ...Ticker.defaults, ...options }
+	public signal: any;
+
+	constructor(private readonly startOptions: TickerStartOptions) {
+		this.startOptions = { ...Ticker.defaults, ...startOptions }
+		this.options = { ...this.startOptions, ...{ stocks: {} as TickerSymbols } };
 	}
 
 	public async start(): Promise<void> {
-		if (typeof (this.options.frequency) === 'number' && this.options.frequency > 0) {
-			this.previousTable = await this.update(this.previousTable);
+		await this.watchConfig();
 
+		if (typeof (this.options.frequency) === 'number' && this.options.frequency > 0) {
 			setInterval(async () => {
-				this.previousTable = await this.update(this.previousTable);
+				await this.doUpdate();
 			}, this.options.frequency * 1000);
 		}
+	}
+
+	private async doUpdate(): Promise<void> {
+		this.previousTable = await this.update(this.previousTable);
 	}
 
 	private format(val: number, columnDef: ColumnDefinition, lengthCheck: boolean = false, previous: number | null = null): string {
@@ -346,5 +355,22 @@ export class Ticker {
 		finally {
 			this.running = false;
 		}
+	}
+
+	private async updateFromConfig(): Promise<void> {
+		var configJson = await fsPromises.readFile(this.startOptions.configPath, 'utf8');
+		this.options.stocks = JSON.parse(configJson) as TickerSymbols;
+		await this.doUpdate();
+	}
+
+	private async watchConfig(): Promise<void> {
+		if (this.watcher)
+			return;
+
+		this.watcher = watch(this.startOptions.configPath, (eventType, filename) => {
+			this.updateFromConfig();
+		});
+
+		await this.updateFromConfig();
 	}
 }

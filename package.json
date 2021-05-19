@@ -6,7 +6,7 @@
   "scripts": {
     "postinstall": "copy-files-from-to",
     "start": "ts-node ./src/index.ts",
-    "start:dev": "nodemon",
+    "dev": "nodemon",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -28,7 +28,7 @@
   "copyFiles": [
     {
       "from": "src/config.sample.json",
-      "to": "src/config.json"
+      "to": "config.json"
     }
   ],
   "copyFilesSettings": {

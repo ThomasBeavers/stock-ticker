@@ -1,6 +1,10 @@
-export interface TickerOptions {
+export interface TickerStartOptions {
+	configPath: string;
 	frequency?: number;
 	limitHours?: boolean;
+}
+
+export interface TickerOptions extends TickerStartOptions {
 	stocks: TickerSymbols;
 }
 
