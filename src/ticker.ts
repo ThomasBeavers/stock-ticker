@@ -75,7 +75,11 @@ export class Ticker {
 	}
 
 	private async doUpdate(): Promise<void> {
-		this.previousTable = await this.update(this.previousTable);
+		try {
+			this.previousTable = await this.update(this.previousTable);
+		} catch (e) {
+			console.error(e);
+		}
 	}
 
 	private format(val: number, columnDef: ColumnDefinition, lengthCheck: boolean = false, previous: number | null = null): string {
