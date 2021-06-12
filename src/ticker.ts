@@ -19,6 +19,8 @@ interface ColumnDefinition {
 }
 
 export class Ticker {
+	private readonly alertStatus: { [symbol: string]: { [price: number]: number } } = {};
+
 	private static apiEndpoint = 'https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&corsDomain=finance.yahoo.com';
 	private static colors = {
 		Reset: "\x1b[0m",
@@ -47,11 +49,10 @@ export class Ticker {
 		'postMarketChangePercent'
 	];
 
-	private readonly alertStatus: { [symbol: string]: { [price: number]: number } } = {};
-
 	private afterHoursLogged: boolean = false;
 	private previousTable: TableRow[] | null = null;
 	private running = false;
+	private updateFromConfigTimer: NodeJS.Timeout | null = null;
 	private watcher?: FSWatcher;
 	private weekendLogged: boolean = false;
 
@@ -361,10 +362,18 @@ export class Ticker {
 		}
 	}
 
-	private async updateFromConfig(): Promise<void> {
-		var configJson = await fsPromises.readFile(this.startOptions.configPath, 'utf8');
-		this.options.stocks = JSON.parse(configJson) as TickerSymbols;
-		await this.doUpdate();
+	private async updateFromConfig(changeDetected: boolean = false): Promise<void> {
+		try {
+			var configJson = await fsPromises.readFile(this.startOptions.configPath, 'utf8');
+			this.options.stocks = JSON.parse(configJson) as TickerSymbols;
+			await this.doUpdate();
+			if (changeDetected)
+			{
+				console.log("Updated config imported!");
+			}
+		} catch (e) {
+			console.error(e);
+		}
 	}
 
 	private async watchConfig(): Promise<void> {
@@ -372,7 +381,12 @@ export class Ticker {
 			return;
 
 		this.watcher = watch(this.startOptions.configPath, (eventType, filename) => {
-			this.updateFromConfig();
+			if (this.updateFromConfigTimer)
+				clearTimeout(this.updateFromConfigTimer);
+
+			this.updateFromConfigTimer = setTimeout(() => {
+				this.updateFromConfig(true);
+			}, 100);
 		});
 
 		await this.updateFromConfig();
