@@ -348,10 +348,12 @@ export class Ticker {
           });
         }
 
+        let hasPositions = false;
         let oldValue = 0;
         let newValue = 0;
 
-        if (symbolConfig.positions) {
+        if (symbolConfig.positions && symbolConfig.positions.length > 0) {
+          hasPositions = true;
           symbolConfig.positions.forEach((holding) => {
             oldValue += holding.amount * holding.price;
             newValue += holding.amount * price;
@@ -366,9 +368,11 @@ export class Ticker {
           Change: change,
           "Change %": changePercent,
           Volume: this.format(volume, columns["Volume"], true),
-          "Total Change": totalChange,
-          "Total %": (totalChange / oldValue) * 100,
-          "Current Value": this.format(newValue, columns["Price"], true),
+          "Total Change": hasPositions ? totalChange : "-",
+          "Total %": hasPositions ? (totalChange / oldValue) * 100 : "-",
+          "Current Value": hasPositions
+            ? this.format(newValue, columns["Price"], true)
+            : "-",
           " ": nonRegularMarket,
         };
 
