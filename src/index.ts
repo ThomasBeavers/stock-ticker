@@ -1,6 +1,14 @@
 import { Ticker } from "./ticker";
 import { TickerStartOptions, TickerSymbols } from "./ticker-options";
 
+function setTitle(title: string) {
+  if (process.platform == "win32") {
+    process.title = title;
+  } else {
+    process.stdout.write("\x1b]2;" + title + "\x1b\x5c");
+  }
+}
+
 const options: TickerStartOptions = {
   configPath: "./config.json",
 };
@@ -20,6 +28,8 @@ async function start() {
     return ticker.start();
   }
 }
+
+setTitle("Stock Ticker");
 
 start().then(
   () => {},
