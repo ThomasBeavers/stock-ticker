@@ -448,13 +448,32 @@ export class Ticker {
     }
   }
 
-  private async updateFromConfig(): Promise<void> {
+  private async updateConfig(symbol: string, positions: Position[]) {
+    await this.updateFromConfig();
+
+    this.options.stocks[symbol] = {
+      ...this.options.stocks[symbol],
+      positions,
+    };
+
+    await fsPromises.writeFile(
+      this.startOptions.configPath,
+      JSON.stringify(this.options.stocks, null, 2)
+    );
+  }
+
+  private async onChangedConfig(): Promise<void> {
+    await this.updateFromConfig();
+
+    await this.doUpdate();
+  }
+
+  private async updateFromConfig() {
     var configJson = await fsPromises.readFile(
       this.startOptions.configPath,
       "utf8"
     );
     this.options.stocks = JSON.parse(configJson) as TickerSymbols;
-    await this.doUpdate();
   }
 
   private async watchConfig(): Promise<void> {
