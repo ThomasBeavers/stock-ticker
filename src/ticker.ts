@@ -1,15 +1,19 @@
 import { FSWatcher, promises as fsPromises, watch } from "fs";
 import moment from "moment";
-import fetch from "node-fetch";
+import yahooFinance from "yahoo-finance2";
+import parse from "node-html-parser";
 
 import {
-  QuoteResponse,
+  Position,
+  //   Quote,
+  //   QuoteResponse,
   TickerOptions,
   TickerStartOptions,
   TickerSymbols,
-  isQuoteResponse,
-  isStockResponse,
+  //   isQuoteResponse,
+  //   isStockResponse,
 } from "./ticker-options";
+import { QuoteResponseArray } from "yahoo-finance2/dist/esm/src/modules/quote";
 
 const growl = require("growl");
 
@@ -26,8 +30,9 @@ interface ColumnDefinition {
 }
 
 export class Ticker {
-  private static apiEndpoint =
-    "https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&corsDomain=finance.yahoo.com";
+  //   private static apiEndpoint =
+  // 	  "https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&corsDomain=finance.yahoo.com";
+
   private static colors = {
     Reset: "\x1b[0m",
     Bright: "\x1b[1m",
@@ -84,6 +89,39 @@ export class Ticker {
       setInterval(async () => {
         await this.doUpdate();
       }, this.options.frequency * 1000);
+    }
+  }
+
+  public async importPositions(): Promise<void> {
+    // for each file in data/positions parse the html and update the config in config.json using the file name as the symbol
+    const files = await fsPromises.readdir("./data/positions");
+    const positions: TickerSymbols = {};
+
+    for (const file of files) {
+      const content = await fsPromises.readFile(
+        `./data/positions/${file}`,
+        "utf8"
+      );
+
+      const symbol = file.split(".")[0];
+
+      const table = parse(content);
+
+      const positions = table
+        .querySelectorAll("tr")
+        .map((row) => {
+          const cells = row.querySelectorAll("td");
+
+          if (!cells.length) return null;
+
+          return {
+            amount: parseFloat(cells[5].textContent || "0"),
+            price: parseFloat((cells[6].textContent || "0").replace("$", "")),
+          };
+        })
+        .filter((row) => row !== null) as Position[];
+
+      this.updateConfig(symbol, positions);
     }
   }
 
@@ -169,39 +207,16 @@ export class Ticker {
     });
   }
 
-  private async pullStocks(stocks: TickerSymbols): Promise<QuoteResponse> {
-    const url = `${Ticker.apiEndpoint}&fields=${Ticker.fields.join(
-      ","
-    )}&symbols=${Object.keys(stocks).join(",")}`;
+  private async pullStocks(
+    stocks: TickerSymbols
+  ): Promise<{ error?: unknown; result: QuoteResponseArray }> {
+    try {
+      return { result: await yahooFinance.quote(Object.keys(stocks)) };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
 
-    const response = await fetch(url);
-    const json = await response.json();
-
-    if (!isStockResponse(json)) {
-      return {
-        error: "Invalid response",
-        result: [],
-      };
+      return { error: msg, result: [] };
     }
-
-    if (json.finance.error) {
-      return {
-        error: json.finance.error,
-        result: [],
-      };
-    }
-
-    return json.finance;
-
-    // return fetch(url)
-    //   .then((res) => res.json())
-    //   .then((json) => json.quoteResponse as QuoteResponse)
-    //   .catch((error) => {
-    //     return {
-    //       error,
-    //       result: [],
-    //     };
-    //   });
   }
 
   private async update(
@@ -288,15 +303,22 @@ export class Ticker {
             change = quote.preMarketChange;
             changePercent = quote.preMarketChangePercent;
             break;
+
           case "POST":
             nonRegularMarket = ">";
             price = quote.postMarketPrice;
             change = quote.postMarketChange;
             changePercent = quote.postMarketChangePercent;
             break;
+
           default:
             break;
         }
+
+        price = price || 0;
+        change = change || 0;
+        changePercent = changePercent || 0;
+        volume = volume || 0;
 
         const symbolConfig = this.options.stocks[quote.symbol];
         if (symbolConfig.alerts) {
@@ -416,7 +438,7 @@ export class Ticker {
         );
       });
 
-      console.log();
+      console.log("\n");
       console.log(moment().format("L LTS"));
 
       return table;
@@ -425,13 +447,32 @@ export class Ticker {
     }
   }
 
-  private async updateFromConfig(): Promise<void> {
+  private async updateConfig(symbol: string, positions: Position[]) {
+    await this.updateFromConfig();
+
+    this.options.stocks[symbol] = {
+      ...this.options.stocks[symbol],
+      positions,
+    };
+
+    await fsPromises.writeFile(
+      this.startOptions.configPath,
+      JSON.stringify(this.options.stocks, null, 2)
+    );
+  }
+
+  private async onChangedConfig(): Promise<void> {
+    await this.updateFromConfig();
+
+    await this.doUpdate();
+  }
+
+  private async updateFromConfig() {
     var configJson = await fsPromises.readFile(
       this.startOptions.configPath,
       "utf8"
     );
     this.options.stocks = JSON.parse(configJson) as TickerSymbols;
-    await this.doUpdate();
   }
 
   private async watchConfig(): Promise<void> {
@@ -440,10 +481,10 @@ export class Ticker {
     this.watcher = watch(
       this.startOptions.configPath,
       (eventType, filename) => {
-        this.updateFromConfig();
+        this.onChangedConfig();
       }
     );
 
-    await this.updateFromConfig();
+    await this.onChangedConfig();
   }
 }
