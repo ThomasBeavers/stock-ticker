@@ -67,6 +67,7 @@ export class Ticker {
   private afterHoursLogged: boolean = false;
   private previousTable: TableRow[] | null = null;
   private running = false;
+  private updateFromConfigTimer: NodeJS.Timeout | null = null;
   private watcher?: FSWatcher;
   private weekendLogged: boolean = false;
 
@@ -447,32 +448,13 @@ export class Ticker {
     }
   }
 
-  private async updateConfig(symbol: string, positions: Position[]) {
-    await this.updateFromConfig();
-
-    this.options.stocks[symbol] = {
-      ...this.options.stocks[symbol],
-      positions,
-    };
-
-    await fsPromises.writeFile(
-      this.startOptions.configPath,
-      JSON.stringify(this.options.stocks, null, 2)
-    );
-  }
-
-  private async onChangedConfig(): Promise<void> {
-    await this.updateFromConfig();
-
-    await this.doUpdate();
-  }
-
-  private async updateFromConfig() {
+  private async updateFromConfig(): Promise<void> {
     var configJson = await fsPromises.readFile(
       this.startOptions.configPath,
       "utf8"
     );
     this.options.stocks = JSON.parse(configJson) as TickerSymbols;
+    await this.doUpdate();
   }
 
   private async watchConfig(): Promise<void> {
@@ -481,7 +463,12 @@ export class Ticker {
     this.watcher = watch(
       this.startOptions.configPath,
       (eventType, filename) => {
-        this.onChangedConfig();
+        if (this.updateFromConfigTimer)
+          clearTimeout(this.updateFromConfigTimer);
+
+        this.updateFromConfigTimer = setTimeout(() => {
+          this.onChangedConfig();
+        }, 100);
       }
     );
 
