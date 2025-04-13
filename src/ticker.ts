@@ -34,10 +34,14 @@ export class Ticker {
   // 	  "https://query1.finance.yahoo.com/v7/finance/quote?lang=en-US&region=US&corsDomain=finance.yahoo.com";
 
   private static colors = {
-    Reset: "\x1b[0m",
-    Bright: "\x1b[1m",
+    // Reset: "\x1b[0m",
+    Default: "\x1b[39m",
+    BrightOn: "\x1b[1m",
+    BrightOff: "\x1b[22m",
     Red: "\x1b[31m",
     Green: "\x1b[32m",
+    BackGrey: "\x1b[48;5;235m",
+    BackDefault: "\x1b[49m",
   };
 
   private static defaults: TickerStartOptions = {
@@ -197,7 +201,12 @@ export class Ticker {
     else if (val < 0) color = Ticker.colors.Red;
     else if (val > 0) color = Ticker.colors.Green;
 
-    return color + formatted + (color.length > 0 ? Ticker.colors.Reset : "");
+    return (
+      color +
+      formatted +
+      (color.includes(Ticker.colors.BrightOn) ? Ticker.colors.BrightOff : "") +
+      (color.length > 0 ? Ticker.colors.Default : "")
+    );
   }
 
   private formatFull(val: number, columnDef: ColumnDefinition) {
@@ -262,16 +271,16 @@ export class Ticker {
       }
 
       const columns: { [column: string]: ColumnDefinition } = {
-        Symbol: { length: 0, color: Ticker.colors.Bright },
-        Price: { length: 0, color: Ticker.colors.Bright },
+        Symbol: { length: 0, color: Ticker.colors.BrightOn },
+        Price: { length: 0, color: Ticker.colors.BrightOn },
         Change: { length: 0, prefix: "$" },
         "Change %": { length: 0, postfix: "%" },
-        Volume: { length: 0, color: Ticker.colors.Bright, compact: true },
+        Volume: { length: 0, color: Ticker.colors.BrightOn, compact: true },
         "Total Change": { length: 0, prefix: "$" },
         "Total %": { length: 0, postfix: "%" },
         "Current Value": {
           length: 0,
-          color: Ticker.colors.Bright,
+          color: Ticker.colors.BrightOn,
           prefix: "$",
         },
         " ": { length: 0 },
@@ -290,7 +299,7 @@ export class Ticker {
       });
 
       const table = results.result.map((quote, index) => {
-        let nonRegularMarket = "";
+        let nonRegularMarket = "*";
 
         let price = quote.regularMarketPrice;
         let change = quote.regularMarketChange;
@@ -402,44 +411,56 @@ export class Ticker {
       console.clear();
 
       console.log(
-        Ticker.colors.Bright +
+        Ticker.colors.BrightOn +
+          Ticker.colors.BackGrey +
           Object.keys(columns)
             .map((column) => column.padStart(columns[column].length))
             .join("  ") +
-          Ticker.colors.Reset
+          Ticker.colors.BackDefault +
+          Ticker.colors.BrightOff
       );
 
       table.forEach((row, index) => {
         console.log(
-          Object.keys(columns)
-            .map((column) => {
-              const color = columns[column].color;
-              let value = row[column];
+          (index % 2 === 1 ? Ticker.colors.BackGrey : "") +
+            Object.keys(columns)
+              .map((column) => {
+                const color = columns[column].color;
+                let value = row[column];
 
-              if (typeof value === "string") {
-                value = value.padStart(columns[column].length);
+                if (typeof value === "string") {
+                  value = value.padStart(columns[column].length);
 
-                if (color) return color + value + Ticker.colors.Reset;
-
-                return value;
-              }
-
-              if (column === "Price") {
-                if (previousTable != null && previousTable.length > index) {
-                  const previousPrice = previousTable[index]["Price"];
-                  if (typeof previousPrice === "number")
-                    return this.format(
-                      value,
-                      columns[column],
-                      false,
-                      previousPrice
+                  if (color)
+                    return (
+                      color +
+                      value +
+                      (color.includes(Ticker.colors.BrightOn)
+                        ? Ticker.colors.BrightOff
+                        : "") +
+                      Ticker.colors.Default
                     );
-                }
-              }
 
-              return this.format(value, columns[column]);
-            })
-            .join("  ")
+                  return value;
+                }
+
+                if (column === "Price") {
+                  if (previousTable != null && previousTable.length > index) {
+                    const previousPrice = previousTable[index]["Price"];
+                    if (typeof previousPrice === "number")
+                      return this.format(
+                        value,
+                        columns[column],
+                        false,
+                        previousPrice
+                      );
+                  }
+                }
+
+                return this.format(value, columns[column]);
+              })
+              .join("  ") +
+            (index % 2 === 1 ? Ticker.colors.BackDefault : "")
         );
       });
 
