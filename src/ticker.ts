@@ -18,15 +18,35 @@ import { QuoteResponseArray } from "yahoo-finance2/dist/esm/src/modules/quote";
 const growl = require("growl");
 
 interface TableRow {
-  [column: string]: string | number;
+  symbol: string | number;
+  price: string | number;
+  change: string | number;
+  changePercent: string | number;
+  volume: string | number;
+  cost: string | number;
+  totalChange: string | number;
+  totalChangePercent: string | number;
+  currentValue: string | number;
+  marketIndicator: string | number;
 }
+
 interface ColumnDefinition {
+  name: string;
   color?: string;
   compact?: boolean;
   decimals?: number;
   length: number;
   postfix?: string;
   prefix?: string;
+}
+
+enum TickerErrorSource {
+  UpdateFromConfig,
+}
+
+interface TickerError {
+  source: TickerErrorSource;
+  msg: any[];
 }
 
 export class Ticker {
@@ -49,6 +69,7 @@ export class Ticker {
     frequency: 10,
     limitHours: false,
   };
+
   private static fields = [
     "symbol",
     "marketState",
@@ -74,6 +95,7 @@ export class Ticker {
   private updateFromConfigTimer: NodeJS.Timeout | null = null;
   private watcher?: FSWatcher;
   private weekendLogged: boolean = false;
+  private error: TickerError | null = null;
 
   public readonly options: TickerOptions;
 
@@ -270,24 +292,36 @@ export class Ticker {
         return previousTable;
       }
 
-      const columns: { [column: string]: ColumnDefinition } = {
-        Symbol: { length: 0, color: Ticker.colors.BrightOn },
-        Price: { length: 0, color: Ticker.colors.BrightOn },
-        Change: { length: 0, prefix: "$" },
-        "Change %": { length: 0, postfix: "%" },
-        Volume: { length: 0, color: Ticker.colors.BrightOn, compact: true },
-        "Total Change": { length: 0, prefix: "$" },
-        "Total %": { length: 0, postfix: "%" },
-        "Current Value": {
+      const columns: Record<keyof TableRow, ColumnDefinition> = {
+        symbol: { name: "Symbol", length: 0, color: Ticker.colors.BrightOn },
+        price: { name: "Price", length: 0, color: Ticker.colors.BrightOn },
+        change: { name: "Change", length: 0, prefix: "$" },
+        changePercent: { name: "Change %", length: 0, postfix: "%" },
+        volume: {
+          name: "Volume",
+          length: 0,
+          color: Ticker.colors.BrightOn,
+          compact: true,
+        },
+        cost: {
+          name: "Avg Cost",
           length: 0,
           color: Ticker.colors.BrightOn,
           prefix: "$",
         },
-        " ": { length: 0 },
+        totalChange: { name: "Total", length: 0, prefix: "$" },
+        totalChangePercent: { name: "Total %", length: 0, postfix: "%" },
+        currentValue: {
+          name: "Current Value",
+          length: 0,
+          color: Ticker.colors.BrightOn,
+          prefix: "$",
+        },
+        marketIndicator: { name: " ", length: 0 },
       };
 
-      Object.keys(columns).forEach((column) => {
-        columns[column].length = column.length;
+      (Object.keys(columns) as Array<keyof TableRow>).forEach((column) => {
+        columns[column].length = columns[column].name.length;
 
         if (!columns[column].prefix) {
           columns[column].prefix = "";
@@ -299,7 +333,7 @@ export class Ticker {
       });
 
       const table = results.result.map((quote, index) => {
-        let nonRegularMarket = "*";
+        let marketIndicator = "*";
 
         let price = quote.regularMarketPrice;
         let change = quote.regularMarketChange;
@@ -308,14 +342,14 @@ export class Ticker {
 
         switch (quote.marketState) {
           case "PRE":
-            nonRegularMarket = "<";
+            marketIndicator = "<";
             price = quote.preMarketPrice;
             change = quote.preMarketChange;
             changePercent = quote.preMarketChangePercent;
             break;
 
           case "POST":
-            nonRegularMarket = ">";
+            marketIndicator = ">";
             price = quote.postMarketPrice;
             change = quote.postMarketChange;
             changePercent = quote.postMarketChangePercent;
@@ -358,34 +392,35 @@ export class Ticker {
         }
 
         let hasPositions = false;
-        let oldValue = 0;
-        let newValue = 0;
+        let cost = 0;
+        let currentValue = 0;
 
         if (symbolConfig.positions && symbolConfig.positions.length > 0) {
           hasPositions = true;
           symbolConfig.positions.forEach((holding) => {
-            oldValue += holding.amount * holding.price;
-            newValue += holding.amount * price;
+            cost += holding.amount * holding.price;
+            currentValue += holding.amount * price;
           });
         }
 
-        const totalChange = newValue - oldValue;
+        const totalChange = currentValue - cost;
 
         const row: TableRow = {
-          Symbol: quote.symbol,
-          Price: price,
-          Change: change,
-          "Change %": changePercent,
-          Volume: this.format(volume, columns["Volume"], true),
-          "Total Change": hasPositions ? totalChange : "-",
-          "Total %": hasPositions ? (totalChange / oldValue) * 100 : "-",
-          "Current Value": hasPositions
-            ? this.format(newValue, columns["Price"], true)
+          symbol: quote.symbol,
+          price,
+          change,
+          changePercent,
+          volume: this.format(volume, columns.volume, true),
+          totalChange: hasPositions ? totalChange : "-",
+          cost: hasPositions ? this.format(cost, columns.cost, true) : "-",
+          totalChangePercent: hasPositions ? (totalChange / cost) * 100 : "-",
+          currentValue: hasPositions
+            ? this.format(currentValue, columns.currentValue, true)
             : "-",
-          " ": nonRegularMarket,
+          marketIndicator,
         };
 
-        Object.keys(row).forEach((column) => {
+        (Object.keys(row) as Array<keyof TableRow>).forEach((column) => {
           let value = row[column];
 
           if (
@@ -413,8 +448,10 @@ export class Ticker {
       console.log(
         Ticker.colors.BrightOn +
           Ticker.colors.BackGrey +
-          Object.keys(columns)
-            .map((column) => column.padStart(columns[column].length))
+          (Object.keys(columns) as Array<keyof TableRow>)
+            .map((column) =>
+              columns[column].name.padStart(columns[column].length)
+            )
             .join("  ") +
           Ticker.colors.BackDefault +
           Ticker.colors.BrightOff
@@ -423,7 +460,7 @@ export class Ticker {
       table.forEach((row, index) => {
         console.log(
           (index % 2 === 1 ? Ticker.colors.BackGrey : "") +
-            Object.keys(columns)
+            (Object.keys(columns) as Array<keyof TableRow>)
               .map((column) => {
                 const color = columns[column].color;
                 let value = row[column];
@@ -444,9 +481,9 @@ export class Ticker {
                   return value;
                 }
 
-                if (column === "Price") {
+                if (column === "price") {
                   if (previousTable != null && previousTable.length > index) {
-                    const previousPrice = previousTable[index]["Price"];
+                    const previousPrice = previousTable[index].price;
                     if (typeof previousPrice === "number")
                       return this.format(
                         value,
@@ -466,10 +503,35 @@ export class Ticker {
 
       console.log("\n");
       console.log(moment().format("L LTS"));
+      this.displayError();
 
       return table;
     } finally {
       this.running = false;
+    }
+  }
+
+  private clearError(source: TickerErrorSource) {
+    if (this.error && this.error.source === source) {
+      this.error = null;
+    }
+  }
+
+  private displayError(
+    source: TickerErrorSource | null = null,
+    msg: any[] | null = null
+  ) {
+    if (source !== null) {
+      this.error = {
+        source,
+        msg: msg || [],
+      };
+    }
+
+    if (this.error) {
+      console.error(
+        ...[TickerErrorSource[this.error.source], ...this.error.msg]
+      );
     }
   }
 
@@ -494,11 +556,23 @@ export class Ticker {
   }
 
   private async updateFromConfig() {
+    this.clearError(TickerErrorSource.UpdateFromConfig);
+
     var configJson = await fsPromises.readFile(
       this.startOptions.configPath,
       "utf8"
     );
-    this.options.stocks = JSON.parse(configJson) as TickerSymbols;
+
+    try {
+      const newConfig = JSON.parse(configJson) as TickerSymbols;
+
+      this.options.stocks = newConfig;
+    } catch (e) {
+      this.displayError(TickerErrorSource.UpdateFromConfig, [
+        "Invalid config file:",
+        e,
+      ]);
+    }
   }
 
   private async watchConfig(): Promise<void> {
