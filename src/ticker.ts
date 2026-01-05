@@ -123,8 +123,6 @@ export class Ticker {
   public async start(): Promise<void> {
     await this.watchConfig();
 
-    this.notify("Ticker started");
-
     if (
       typeof this.options.frequency === "number" &&
       this.options.frequency > 0
