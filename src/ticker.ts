@@ -1,7 +1,8 @@
 import { FSWatcher, promises as fsPromises, watch } from "fs";
 import moment from "moment";
-import yahooFinance from "yahoo-finance2";
+import YahooFinance from "yahoo-finance2";
 import parse from "node-html-parser";
+import Hjson from "hjson";
 
 import {
   Position,
@@ -13,9 +14,14 @@ import {
   //   isQuoteResponse,
   //   isStockResponse,
 } from "./ticker-options";
-import { QuoteResponseArray } from "yahoo-finance2/dist/esm/src/modules/quote";
 
-const growl = require("growl");
+import notifier from "node-notifier";
+import { QuoteResponseArray } from "yahoo-finance2/script/src/modules/quote";
+
+const yahooFinance = new YahooFinance({
+  //  ...options, // optional
+  suppressNotices: ["yahooSurvey"], // optional
+});
 
 interface TableRow {
   symbol: string | number;
@@ -95,6 +101,7 @@ export class Ticker {
   private updateFromConfigTimer: NodeJS.Timeout | null = null;
   private watcher?: FSWatcher;
   private weekendLogged: boolean = false;
+  private configUpdateTime: moment.Moment = moment.min();
   private error: TickerError | null = null;
 
   public readonly options: TickerOptions;
@@ -309,7 +316,7 @@ export class Ticker {
           color: Ticker.colors.BrightOn,
           prefix: "$",
         },
-        totalChange: { name: "Total", length: 0, prefix: "$" },
+        totalChange: { name: "Total Change", length: 0, prefix: "$" },
         totalChangePercent: { name: "Total %", length: 0, postfix: "%" },
         currentValue: {
           name: "Current Value",
@@ -380,11 +387,19 @@ export class Ticker {
               this.alertStatus[quote.symbol][alertPrice] != null &&
               this.alertStatus[quote.symbol][alertPrice] !== alertCheck
             ) {
-              if (alertCheck > 0)
-                growl(`${quote.symbol} has gone above ${alertPrice}: ${price}`);
-              else if (alertCheck < 0)
-                growl(`${quote.symbol} has gone below ${alertPrice}: ${price}`);
-              else growl(`${quote.symbol} has reached ${alertPrice}: ${price}`);
+              if (alertCheck > 0) {
+                notifier.notify(
+                  `${quote.symbol} has gone above ${alertPrice}: ${price}`
+                );
+              } else if (alertCheck < 0) {
+                notifier.notify(
+                  `${quote.symbol} has gone below ${alertPrice}: ${price}`
+                );
+              } else {
+                notifier.notify(
+                  `${quote.symbol} has reached ${alertPrice}: ${price}`
+                );
+              }
             }
 
             this.alertStatus[quote.symbol][alertPrice] = alertCheck;
@@ -501,8 +516,17 @@ export class Ticker {
         );
       });
 
+      // recently updated if configUpdateTime is less than 5 minutes ago
+      const recentlyUpdated =
+        moment().diff(this.configUpdateTime, "minutes") < 5;
+
       console.log("\n");
-      console.log(moment().format("L LTS"));
+      console.log(
+        `Config:  ${this.configUpdateTime.format("L LTS")}${
+          recentlyUpdated ? "*" : ""
+        }`
+      );
+      console.log(`Updated: ${moment().format("L LTS")}`);
       this.displayError();
 
       return table;
@@ -545,7 +569,7 @@ export class Ticker {
 
     await fsPromises.writeFile(
       this.startOptions.configPath,
-      JSON.stringify(this.options.stocks, null, 2)
+      Hjson.stringify(this.options.stocks, { keepWsc: true })
     );
   }
 
@@ -564,9 +588,12 @@ export class Ticker {
     );
 
     try {
-      const newConfig = JSON.parse(configJson) as TickerSymbols;
+      const newConfig = Hjson.parse(configJson, {
+        keepWsc: true,
+      }) as TickerSymbols;
 
       this.options.stocks = newConfig;
+      this.configUpdateTime = moment();
     } catch (e) {
       this.displayError(TickerErrorSource.UpdateFromConfig, [
         "Invalid config file:",

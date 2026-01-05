@@ -1,5 +1,5 @@
 import { Ticker } from "./ticker";
-import { TickerStartOptions, TickerSymbols } from "./ticker-options";
+import { TickerStartOptions } from "./ticker-options";
 
 function setTitle(title: string) {
   if (process.platform == "win32") {
