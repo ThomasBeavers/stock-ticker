@@ -113,8 +113,17 @@ export class Ticker {
     this.options = { ...this.startOptions, ...{ stocks: {} as TickerSymbols } };
   }
 
+  private notify(message: string): void {
+    notifier.notify({
+      title: "Stock Ticker",
+      message,
+    });
+  }
+
   public async start(): Promise<void> {
     await this.watchConfig();
+
+    this.notify("Ticker started");
 
     if (
       typeof this.options.frequency === "number" &&
@@ -388,15 +397,15 @@ export class Ticker {
               this.alertStatus[quote.symbol][alertPrice] !== alertCheck
             ) {
               if (alertCheck > 0) {
-                notifier.notify(
+                this.notify(
                   `${quote.symbol} has gone above ${alertPrice}: ${price}`
                 );
               } else if (alertCheck < 0) {
-                notifier.notify(
+                this.notify(
                   `${quote.symbol} has gone below ${alertPrice}: ${price}`
                 );
               } else {
-                notifier.notify(
+                this.notify(
                   `${quote.symbol} has reached ${alertPrice}: ${price}`
                 );
               }
